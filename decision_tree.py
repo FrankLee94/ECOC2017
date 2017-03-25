@@ -28,7 +28,7 @@ day_index = {'0507': 1, '0508': 2, '0509': 3, '0510': 4, '0511': 5, '0512': 6, '
 			 '0806': 1, '0807': 2, '0808': 3, '0809': 4, '0810': 5, '0811': 6, '0812': 0}
 
 service_type = ['idle', '0001', '0010', '0011', '0100', '0101', '0110', '0111', '1000',
-				'1001', '1010', '1011', '1100', '1101', '1110', '1111']
+				'1001', '1010', '1011', '1100', '1101', '1110', '1111', 'down']
 
 # get activity_dict
 def get_activity_dict(activity_dict_path):
@@ -88,10 +88,10 @@ def feature_select(data_dict, profile):
 		one_user_profile.insert(0, user_count)        # insert user_id
 		for date, activity in all_dates.items():
 			for i in range(len(activity)):
-				if activity[i] != 'down':  # do not add 'down'
+				if 1:#activity[i] != 'down':  # do not add 'down'
 					sample = copy.deepcopy(one_user_profile)
-					del(sample[1:4])
-					sample.append(int(i/6))                # i represents hour
+					#del(sample[1:4])
+					sample.append(int(i/6))  #(int(i/6))                # i represents hour
 					sample.append(day_index[date])  # day_index: 7 days in one week
 					feature.append(sample)
 					cate.append(activity[i])
@@ -211,12 +211,18 @@ def decision_tree(feature_train, feature_test, cate_train):
 # apply decision tree after cluster
 def decision_tree_cluster(n_feature_train, n_feature_test, n_cate_train, n_cate_test, n_clusters):
 	hit_rate_sum = 0.0
+	non_down_predict = 0
 	for i in range(n_clusters):
 		clf = tree.DecisionTreeClassifier()
 		clf = clf.fit(n_feature_train[i], n_cate_train[i])
 		n_cate_predict = clf.predict(n_feature_test[i])
+		for item in n_cate_predict:
+			if item != 'down':
+				non_down_predict += 1
 		hit_rate_sum += cal_hit_rate(n_cate_predict, n_cate_test[i])
 	print str(round(hit_rate_sum / n_clusters, 4) * 100) + '%'
+	print 'non_down_predict: ' + str(non_down_predict)
+	print 'total number of sample: ' + str(len(cate_test))
 
 # apply random forests after cluster
 def random_forests_cluster(n_feature_train, n_feature_test, n_cate_train, n_cate_test, n_clusters):
@@ -284,7 +290,7 @@ def neural_network(feature_train, feature_test, cate_train):
 	cate_predict = clf.predict(feature_test)
 	return cate_predict
 
-# neural network is sensitive to feature scaling
+# neural network is sensitive to feature scaling, this function is for neural network
 def feature_standard(feature_train, feature_test):
 	scaler = StandardScaler()
 	scaler.fit(feature_train)
@@ -308,11 +314,11 @@ if __name__ == '__main__':
 	data_segement(activity_dict, train_dict_path, test_dict_path)
 	'''
 
-	train_dict_path = './data/train_dict.pkl'
-	test_dict_path = './data/test_dict.pkl'
+	train_dict_path = '../data/train_dict.pkl'
+	test_dict_path = '../data/test_dict.pkl'
 	train_dict, test_dict = get_data(train_dict_path, test_dict_path)
 
-	profile_path = './data/profile.pkl'
+	profile_path = '../data/profile.pkl'
 	profile = get_profile(profile_path)
 
 	feature_train, feature_test, cate_train, cate_test = feature_build(train_dict, test_dict, profile)
@@ -342,12 +348,17 @@ if __name__ == '__main__':
 	# cluster method
 	for i in range(100):
 		n_clusters = i + 1
-		print i
+		print "n_clusters: " + str(n_clusters)
 		feature_train, feature_test, cate_train, cate_test = feature_build(train_dict, test_dict, profile)
 		n_feature_train, n_feature_test, n_cate_train, n_cate_test = cluster(feature_train, feature_test, cate_train, cate_test, n_clusters)
 		decision_tree_cluster(n_feature_train, n_feature_test, n_cate_train, n_cate_test, n_clusters)
+		non_down_test = 0
+		if i == 0:
+			for item in cate_test:
+				if item != 'down':
+					non_down_test += 1
+		print non_down_test
 	
-
 	#random_forests_cluster(n_feature_train, n_feature_test, n_cate_train, n_cate_test, n_clusters)
 	
 
