@@ -30,6 +30,8 @@ day_index = {'0507': 1, '0508': 2, '0509': 3, '0510': 4, '0511': 5, '0512': 6, '
 service_type = ['idle', 'off', 'W', 'G', 'S', 'V']
 
 # get activity_dict
+# user's activity: default value is 'off'
+# format: {id_1:{'0507': [24/PERIOD], '0508': ['idle', 'W', 'G']}, id_2}
 def get_activity_dict(activity_dict_path):
 	pkl_file = open(activity_dict_path, 'rb')
 	activity_dict = pickle.load(pkl_file)
@@ -39,6 +41,7 @@ def get_activity_dict(activity_dict_path):
 # data are divided into train data and test data
 # first three weeks: train data; last week: test data
 # train_dict and test_dict are subset of activity_dict
+# format: {id_1:{'0507': [24/PERIOD], '0508': ['idle', 'W', 'G']}, id_2}
 def data_segement(activity_dict, train_dict_path, test_dict_path):
 	train_dict = {}
 	test_dict = {}
@@ -80,7 +83,7 @@ def get_profile(profile_path):
 def feature_select(data_dict, profile, over_sampling):
 	feature = []
 	cate = []
-	sampling_num = 80
+	sampling_num = 20
 	user_count = 0  # convert user_id to integer
 	for user_id, all_dates in data_dict.items(): 
 		one_user_profile = copy.deepcopy(profile[user_id])  # gender, age, edu, job
@@ -208,30 +211,6 @@ def conventional_method(feature_train, feature_test, cate_train):
 
 	return cate_predict
 
-# cluster method and feature selected for decision tree
-# make sure that the features used in cluster and decision tree may not be same
-def cluster(feature_train, feature_test, cate_train, cate_test, n_clusters):
-	n_feature_train = [[] for i in range(n_clusters)]
-	n_feature_test = [[] for i in range(n_clusters)]
-	n_cate_train = [[] for i in range(n_clusters)]
-	n_cate_test = [[] for i in range(n_clusters)]
-	kmeans = KMeans(n_clusters = n_clusters, random_state = 0).fit(feature_train)
-	label_train = kmeans.labels_
-	label_test = kmeans.predict(feature_test)
-
-	for i in range(len(label_train)):
-		tree_num = label_train[i]
-		#del(feature_train[i][1:6], feature_train[i][1])
-		n_feature_train[tree_num].append(feature_train[i])
-		n_cate_train[tree_num].append(cate_train[i])
-	for i in range(len(label_test)):
-		tree_num = label_test[i]
-		#del(feature_test[i][1:6], feature_test[i][1])
-		n_feature_test[tree_num].append(feature_test[i])
-		n_cate_test[tree_num].append(cate_test[i])
-
-	return n_feature_train, n_feature_test, n_cate_train, n_cate_test
-
 # decision tree
 def decision_tree(feature_train, feature_test, cate_train):
 	clf = tree.DecisionTreeClassifier()
@@ -239,102 +218,11 @@ def decision_tree(feature_train, feature_test, cate_train):
 	cate_predict = clf.predict(feature_test)
 	return cate_predict
 
-# apply decision tree after cluster
-def decision_tree_cluster(n_feature_train, n_feature_test, n_cate_train, n_cate_test, n_clusters):
-	hit_rate_sum = 0.0
-	non_off_predict = 0
-	for i in range(n_clusters):
-		clf = tree.DecisionTreeClassifier()
-		clf = clf.fit(n_feature_train[i], n_cate_train[i])
-		n_cate_predict = clf.predict(n_feature_test[i])
-		for item in n_cate_predict:
-			if item != 'off':
-				non_off_predict += 1
-		hit_rate_sum += cal_hit_rate(n_cate_predict, n_cate_test[i])
-	print str(round(hit_rate_sum / n_clusters, 4) * 100) + '%'
-	print 'non_off_predict: ' + str(non_off_predict)
-	print 'total number of sample: ' + str(len(cate_test))
-
-# apply random forests after cluster
-def random_forests_cluster(n_feature_train, n_feature_test, n_cate_train, n_cate_test, n_clusters):
-	hit_rate_sum = 0.0
-	for i in range(n_clusters):
-		clf = RandomForestClassifier(n_estimators = 10)
-		clf = clf.fit(n_feature_train[i], n_cate_train[i])
-		n_cate_predict = clf.predict(n_feature_test[i])
-		hit_rate_sum += cal_hit_rate(n_cate_predict, n_cate_test[i])
-	print str(round(hit_rate_sum / n_clusters, 4) * 100) + '%'
-
-
-# calculating sample index
-# this function is for building decision tree or neural network for each user separately
-def calculating_index(feature_train, cate_train):
-	sample_each_user_train = [0 for i in range(USER_NUM)]
-	sample_each_user_test = [0 for i in range(USER_NUM)]
-	sample_index_train = [0 for i in range(USER_NUM)]
-	sample_index_test = [0 for i in range(USER_NUM)]
-
-	for i in range(len(feature_train)):
-		user_id_number = feature_train[i][0]
-		sample_each_user_train[user_id_number] += 1
-	for i in range(len(feature_test)):
-		user_id_number = feature_test[i][0]
-		sample_each_user_test[user_id_number] += 1
-
-	for i in range(USER_NUM):
-		if i == 0:
-			sample_index_train[i] = sample_each_user_train[i]
-			sample_index_test[i] = sample_each_user_test[i]
-		else:
-			sample_index_train[i] = sample_each_user_train[i] + sample_index_train[i-1]
-			sample_index_test[i] = sample_each_user_test[i] + sample_index_test[i-1]
-	return sample_index_train, sample_index_test
-
-# build decision tree for each user separately
-def decision_tree_single(feature_train, feature_test, cate_train, cate_test, sample_index_train, sample_index_test):
-	hit_rate_sum = 0.0
-	hit_rate = 0.0
-	tree_num = 0
-	for i in range(USER_NUM):  # 1000 decision trees
-		if i == 0:
-			X = feature_train[0 : sample_index_train[i]]
-			Y = cate_train[0 : sample_index_train[i]]
-		else:
-			X = feature_train[sample_index_train[i-1] : sample_index_train[i]]
-			Y = cate_train[sample_index_train[i-1] : sample_index_train[i]]
-		if len(X) == 0:        # user do not use computer in train day
-			continue
-		clf = tree.DecisionTreeClassifier()
-		clf = clf.fit(X, Y)
-		cate_predict = clf.predict(feature_test)
-		hit_rate = cal_hit_rate(cate_predict, cate_test)
-		hit_rate_sum += hit_rate
-
-		tree_num += 1
-		print tree_num
-	print hit_rate_sum / tree_num
-
-# neural network
-def neural_network(feature_train, feature_test, cate_train):
-	clf = MLPClassifier(solver = 'lbfgs', alpha = 1e-5, hidden_layer_sizes=(5,2), random_state=1)
-	clf = clf.fit(feature_train, cate_train)
-	cate_predict = clf.predict(feature_test)
-	return cate_predict
-
-# neural network is sensitive to feature scaling, this function is for neural network
-def feature_standard(feature_train, feature_test):
-	scaler = StandardScaler()
-	scaler.fit(feature_train)
-	feature_train = scaler.transform(feature_train)
-	feature_test = scaler.transform(feature_test)
-	return feature_train, feature_test
-
-# random forests
-def random_forests(feature_train, feature_test, cate_train):
-	clf = RandomForestClassifier(n_estimators = 10)
-	clf = clf.fit(feature_train, cate_train)
-	cate_predict = clf.predict(feature_test)
-	return cate_predict
+# save cate_predict as pkl file for migration.py
+def cate_predict_save(cate_predict, cate_predict_path):
+	output = open(cate_predict_path, 'wb')
+	pickle.dump(cate_predict, output)
+	output.close()
 
 if __name__ == '__main__':
 	'''
@@ -355,14 +243,7 @@ if __name__ == '__main__':
 	feature_train, feature_test, cate_train, cate_test = feature_build(train_dict, test_dict, profile)
 
 	# decision tree
-	#cate_predict = decision_tree(feature_train, feature_test, cate_train)
-
-	# neural network
-	#feature_train, feature_test = feature_standard(feature_train, feature_test)
-	#cate_predict = neural_network(feature_train, feature_test, cate_train)
-
-	# random forests
-	#cate_predict = random_forests(feature_train, feature_test, cate_train)
+	cate_predict = decision_tree(feature_train, feature_test, cate_train)
 
 	# conventional method
 	#cate_predict = conventional_method(feature_train, feature_test, cate_train)
@@ -375,21 +256,9 @@ if __name__ == '__main__':
 	print 'feature_test sample: ' + str(feature_test[1000])
 
 	calculating_F_value(cate_predict, cate_test)
-	
-	'''
-	# cluster method
-	for i in range(50):
-		n_clusters = i + 1
-		print "n_clusters: " + str(n_clusters)
-		feature_train, feature_test, cate_train, cate_test = feature_build(train_dict, test_dict, profile)
-		n_feature_train, n_feature_test, n_cate_train, n_cate_test = cluster(feature_train, feature_test, cate_train, cate_test, n_clusters)
-		decision_tree_cluster(n_feature_train, n_feature_test, n_cate_train, n_cate_test, n_clusters)
 
-	'''
-	#random_forests_cluster(n_feature_train, n_feature_test, n_cate_train, n_cate_test, n_clusters)
-	
+	cate_predict_path = '../data/cate_predict.pkl'
+	cate_predict_save(cate_predict, cate_predict_path)
 
-	
-	#sample_index_train, sample_index_test = calculating_index(feature_train, feature_test)
-	#decision_tree_single(feature_train, feature_test, cate_train, cate_test, sample_index_train, sample_index_test)
-	
+	for item in feature_test:
+		print item
