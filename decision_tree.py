@@ -97,7 +97,7 @@ def get_profile(profile_path):
 def feature_select(data_dict, profile, user_id_index, is_over_sampling):
 	feature = []
 	category = []
-	over_sampling_num = 10
+	over_sampling_num = 20
 	for user_id, all_dates in data_dict.items():
 		real_user_id = user_id_index[user_id]
 		one_user_profile = copy.deepcopy(profile[real_user_id])  # gender, age, edu, job
@@ -161,8 +161,6 @@ def calculating_F_value(category_predict, category_test):
 	print 'recall: ' + str(round(recall, 3))
 	print 'F_value: ' + str(round(F_value, 3))
 
-
-# Attention: When you use this method, make sure that only 2 features are selected!! [user_id, hour]
 # 1. select the service type using most in that period in past days
 # 2. if user did not use service in that period before, select the service type using most in past days
 # 3. if user did not use service before, select service randomly 
@@ -174,7 +172,7 @@ def conventional_method(feature_train, feature_test, category_train):
 	service_count_hour = {}
 	service_count_past = {}
 	for i in range(len(feature_train)):
-		key_hour = (feature_train[i][0], feature_train[i][1], category_train[i])
+		key_hour = (feature_train[i][0], feature_train[i][5], category_train[i])
 		if key_hour not in service_count_hour:
 			service_count_hour[key_hour] = 1
 		else:
@@ -210,7 +208,7 @@ def conventional_method(feature_train, feature_test, category_train):
 
 	category_predict = []
 	for i in range(len(feature_test)):
-		key_0 = (feature_test[i][0], feature_test[i][1])
+		key_0 = (feature_test[i][0], feature_test[i][5])
 		key_1 = feature_test[i][0]
 		if key_0 in service_hour:
 			value_0 = service_hour[key_0]
@@ -263,16 +261,12 @@ if __name__ == '__main__':
 	profile_path = '../data/profile.pkl'
 	profile = get_profile(profile_path)
 
-
 	feature_train, feature_test, category_train, category_test = feature_build(train_dict, test_dict, profile, user_id_index)
 
-
-	
 	# decision tree
 	category_predict = decision_tree(feature_train, feature_test, category_train)
 
 	# conventional method
-	# Attention: When you use this method, make sure that only 2 features are selected!! [user_id, hour]
 	#category_predict = conventional_method(feature_train, feature_test, category_train)
 
 	
@@ -289,3 +283,4 @@ if __name__ == '__main__':
 	predict_dict_path = '../data/predict_dict.pkl'
 	predict_dict_save(predict_dict, predict_dict_path)
 	'''
+
