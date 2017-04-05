@@ -14,13 +14,14 @@
 #       企业/公司一般职员: 8
 #       其他：9
 
+# profile format: dict, key = real_id, value = [gender, age, edu, job]
 
 import sys
 import csv
 reload(sys)
 sys.setdefaultencoding( "utf-8" )
 import pickle
-FEATURE_COUNT = 9
+FEATURE_RAW_DATA_COUNT = 9
 
 def get_profile(file_path):
 	csvfile = file(file_path, 'rb')
@@ -37,7 +38,7 @@ def get_profile(file_path):
 			line_num += 1
 			continue
 
-		for i in range(FEATURE_COUNT):
+		for i in range(FEATURE_RAW_DATA_COUNT):
 			if line[1] == '男':
 				gender = 0
 			else:
@@ -96,7 +97,7 @@ def pkl_save(profile, save_path):
 	output.close()
 
 if __name__ == '__main__':
-	file_path = './data/demographic.csv'
-	save_path = './data/profile.pkl'
+	file_path = '../data/demographic.csv'
+	save_path = '../data/profile.pkl'
 	profile = get_profile(file_path)
 	pkl_save(profile, save_path)
