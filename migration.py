@@ -14,7 +14,7 @@ import random
 reload(sys)
 sys.setdefaultencoding( "utf-8" )
 USER_NUM = 1000
-WAVE_NUM = 8
+WAVE_NUM = 10
 ONU_NUM = 32
 USER_PER_ONU = 31
 CAPACITY = 10.0
@@ -24,49 +24,10 @@ service_traffic = {'I': 0.05, 'F': 0.0,  'W': 0.1, 'G': 0.1, 'S': 0.5, 'V': 0.5}
 day_index = ['0806', '0807', '0808', '0809', '0810', '0811', '0812']
 
 
-# get test_dict
-# user's activity: default value is 'off'
-# format: {id_1:{'0507': [24/PERIOD], '0508': ['I', 'W', 'G']}, id_2}
-# return test_dict
-def get_test_dict(test_dict_path):
-	pkl_file = open(test_dict_path, 'rb')
-	test_dict = pickle.load(pkl_file)
-	pkl_file.close()
-	return test_dict
-
-# convert one user's activity to a list
-# 'idle' to 'I', 'off' to 'F'
-# one_user_dict: dict, {'0507': [24/PERIOD], '0508': ['I', 'W', 'G']}
-# return one_user_activity, list, length is 168
-def activity_merge(one_user_dict):
-	one_user_activity = []
-	for day in day_index:
-		for item in one_user_dict[day]:
-			if item == 'idle':
-				item = 'I'
-			if item == 'off':
-				item = 'F'
-			one_user_activity.append(item)
-	return one_user_activity
-
-# convert id to number
-# convert activity to a list
-# one_user_activity: list, length is 168
-# return user_activity: key = user_id, range(1000), value = ['F', 'G'...], length is 7 * 24 = 168
-def test_dict_convert(test_dict):
-	user_activity = {}
-	user_index = 0
-	for key, value in test_dict.items():
-		one_user_activity = activity_merge(value)
-		user_activity[user_index] = one_user_activity
-		user_index += 1
-	return user_activity
-
 # assign user to onu
 # USER_NUM, ONU_NUM
 # return onu_id, range(ONU_NUM)
 def map_user_onu(user_id):
-	#onu_id = -1
 	if user_id < 39:
 		return 0
 	else:
@@ -100,8 +61,7 @@ def traffic_static(user_activity):
 def first_fit(onu_traffic):
 	working_wavelength = [1 for i in range(PERIOD_NUM)]
 	for i in range(PERIOD_NUM):
-		onu_traffic_sorted = copy.deepcopy(onu_traffic[i])
-		onu_traffic_sorted = sorted(onu_traffic_sorted, reverse = True)
+		onu_traffic_sorted = sorted(onu_traffic[i], reverse = True)
 		current_volume = [0.0 for j in range(WAVE_NUM)]
 		for j in range(ONU_NUM):
 			is_need_new = True
@@ -130,6 +90,7 @@ def cal_migration(previous_status, current_status, onu_service, period_id):
 	return migration_one_period
 
 # return current status
+# origin method
 def reconfiguration(previous_wavelength, current_wavelength, previous_status, onu_service, onu_traffic, period_id):
 	current_status = copy.deepcopy(previous_status)
 	pre_migrate_onu = set()    # contains onu waiting for re-loaded
@@ -226,32 +187,39 @@ def migration(working_wavelength, onu_service, onu_traffic):
 		for service_type in migration_count:
 			migration_count[service_type].append(migration_one_period[service_type])
 		print 'period num: ' + str(i+1)
-	
 	return migration_count
 
-if __name__ == '__main__':
-	'''
-	test_dict_path = '../data/test_dict.pkl'
-	test_dict = get_test_dict(test_dict_path)
-	user_activity = test_dict_convert(test_dict)
-	onu_service, onu_traffic = traffic_static(user_activity)
-	working_wavelength = first_fit(onu_traffic)
-
-	status_tuple = (working_wavelength, onu_service, onu_traffic)
-	save_path = '../data/status_tuple.pkl'
-	output = open(save_path, 'wb')
-	pickle.dump(status_tuple, output)
-	output.close()
-	'''
-
-	save_path = '../data/status_tuple.pkl'
-	pkl_file = open(save_path, 'rb')
-	status_tuple = pickle.load(pkl_file)
-	pkl_file.close()
-	working_wavelength = status_tuple[0]
-	onu_service = status_tuple[1]
-	onu_traffic = status_tuple[2]
-
-	migration_count = migration(working_wavelength, onu_service, onu_traffic)
+# migration performance: calculating different traffic migration
+# migration_count: dict, value is list, length is 167
+def migration_static(migration_count, onu_traffic):
+	migration_traffic = {'I': 0, 'F': 0,  'W': 0, 'G': 0, 'S': 0, 'V': 0}
 	for key, value in migration_count.items():
+		for item in value:
+			migration_traffic[key] += item
+	total_migration = 0
+	for key, value in migration_traffic.items():
+		total_migration += value
+	total_traffic = 0
+	for period in onu_traffic:
+		for item in period:
+			total_traffic += item
+	print 'migration traffic'
+	for key, value in migration_traffic.items():
 		print key, value
+	print 'total migration: ' + str(total_migration)
+	print 'total traffic: ' + str(total_traffic)
+	print 'migration rate: ' + str(round(total_migration / total_traffic, 4) * 100) + '%'
+	
+
+if __name__ == '__main__':
+	# user_activity format: key = range(1000), value = list contains service type, length = 168
+
+	# origin method
+	user_activity_origin_path = '../data/user_activity_test/user_activity_origin.pkl'
+	pkl_file = open(user_activity_origin_path, 'rb')
+	user_activity_origin = pickle.load(pkl_file)
+	onu_service, onu_traffic = traffic_static(user_activity_origin)
+	working_wavelength = first_fit(onu_traffic)
+	migration_count = migration(working_wavelength, onu_service, onu_traffic)
+	migration_static(migration_count, onu_traffic)
+	pkl_file.close()
