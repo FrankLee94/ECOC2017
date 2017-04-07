@@ -97,7 +97,7 @@ def get_profile(profile_path):
 def feature_select(data_dict, profile, user_id_index, is_over_sampling):
 	feature = []
 	category = []
-	over_sampling_num = 0
+	over_sampling_num = 20
 	for user_id, all_dates in data_dict.items():
 		real_user_id = user_id_index[user_id]
 		one_user_profile = copy.deepcopy(profile[real_user_id])  # gender, age, edu, job
@@ -169,6 +169,8 @@ def calculating_F_value(category_predict, category_test):
 # service_hour: key = (user_id, hour), value = [service_type, count]
 # service_past: key = user_id, value = [service_type, count]
 def conventional_method_Mused(feature_train, feature_test, category_train):
+	if len(feature_train[0]) != 7:
+		print 'feature wrong'
 	service_count_hour = {}
 	service_count_past = {}
 	for i in range(len(feature_train)):
@@ -223,6 +225,8 @@ def conventional_method_Mused(feature_train, feature_test, category_train):
 	return category_predict
 # method 2: service in last week
 def conventional_method_Lweek(feature_train, feature_test, category_train):
+	if len(feature_train[0]) != 7:
+		print 'feature wrong'
 	category_predict = ['FFF' for i in range(len(feature_test))]
 	for i in range(len(feature_train)):
 		sample = feature_train[i]
@@ -242,8 +246,22 @@ def conventional_method_Lweek(feature_train, feature_test, category_train):
 def decision_tree(feature_train, feature_test, category_train):
 	clf = tree.DecisionTreeClassifier()
 	clf = clf.fit(feature_train, category_train)
-	category_predict = clf.predict(feature_test)
-	return category_predict
+	category_predict = clf.predict(feature_test)   # the format of category_predict is weird
+	category_Dtree = []
+	for item in category_predict:
+		if item == 'F':
+			category_Dtree.append('F')
+		elif item == 'I':
+			category_Dtree.append('I')
+		elif item == 'W':
+			category_Dtree.append('W')
+		elif item == 'G':
+			category_Dtree.append('G')
+		elif item == 'S':
+			category_Dtree.append('S')
+		else:
+			category_Dtree.append('V')
+	return category_Dtree 
 
 # save user_activity as pkl file for migration.py
 def user_activity_save(user_activity, user_activity_path):
@@ -254,6 +272,8 @@ def user_activity_save(user_activity, user_activity_path):
 # user_activity is for migration.py
 # key = user_id, range(1000), value = ['F', 'G'...], length is 7 * 24 = 168
 def activity_restore(feature, category):
+	if len(feature[0]) != 7:
+		print 'feature wrong'
 	user_activity = {}
 	for i in range(USER_NUM):
 		user_activity[i] = ['FFF' for j in range(168)]
@@ -291,21 +311,20 @@ if __name__ == '__main__':
 	print 'feature_train sample: ' + str(feature_train[1000])
 	print 'feature_test sample: ' + str(feature_test[1000])
 
-
-
 	# decision tree
-	#category_Dtree = decision_tree(feature_train, feature_test, category_train)
+	category_Dtree = decision_tree(feature_train, feature_test, category_train)
 
 	# conventional method: most-used service
 	#category_Mused = conventional_method_Mused(feature_train, feature_test, category_train)
 
 	# conventional method: last-week service
-	category_Lweek = conventional_method_Lweek(feature_train, feature_test, category_train)
+	#category_Lweek = conventional_method_Lweek(feature_train, feature_test, category_train)
 
-	cal_hit_rate(category_Lweek, category_test)
-	calculating_F_value(category_Lweek, category_test)
+
+	cal_hit_rate(category_Dtree, category_test)
+	calculating_F_value(category_Dtree, category_test)
 	
-	
+
 	# this part is for migration.py
 	'''
 	# origin data, user_activity_origin is users' real behavior
@@ -313,22 +332,20 @@ if __name__ == '__main__':
 	user_activity_origin = activity_restore(feature_test, category_test)
 	user_activity_save(user_activity_origin, user_activity_origin_path)
 	'''
-	'''
+	
 	# predition data using decision_tree
 	user_activity_Dtree_path = '../data/user_activity_test/user_activity_Dtree.pkl'
 	user_activity_Dtree = activity_restore(feature_test, category_Dtree)
 	user_activity_save(user_activity_Dtree, user_activity_Dtree_path)
-	'''
 	'''
 	# predition data according to users' most-used service
 	user_activity_Mused_path = '../data/user_activity_test/user_activity_Mused.pkl'
 	user_activity_Mused = activity_restore(feature_test, category_Mused)
 	user_activity_save(user_activity_Mused, user_activity_Mused_path)
 	'''
-
-	
+	'''
 	# predition data according to users' last-week service
 	user_activity_Lweek_path = '../data/user_activity_test/user_activity_Lweek.pkl'
 	user_activity_Lweek = activity_restore(feature_test, category_Lweek)
 	user_activity_save(user_activity_Lweek, user_activity_Lweek_path)
-	
+	'''
