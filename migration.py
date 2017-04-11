@@ -10,14 +10,17 @@ import sys
 import pickle
 import copy
 import random
+import matplotlib.pyplot as plt
+import pylab as pl
+import numpy as np
 
 reload(sys)
 sys.setdefaultencoding( "utf-8" )
 USER_NUM = 1000
-WAVE_NUM = 10
+WAVE_NUM = 16
 ONU_NUM = 32
 USER_PER_ONU = 31
-CAPACITY = 10.0
+CAPACITY = 10.001
 PERIOD_NUM = 168
 
 service_traffic = {'I': 0.05, 'F': 0.0,  'W': 0.1, 'G': 0.1, 'S': 0.5, 'V': 0.5}  # unit: Gbps
@@ -66,7 +69,7 @@ def first_fit(onu_traffic):
 		for j in range(ONU_NUM):
 			is_need_new = True
 			for k in range(working_wavelength[i]):         # found space in already-used wavelengths
-				if current_volume[k] + onu_traffic_sorted[j] <= 10.0:
+				if current_volume[k] + onu_traffic_sorted[j] <= CAPACITY:
 					current_volume[k] += onu_traffic_sorted[j]
 					is_need_new = False
 					break
@@ -91,26 +94,26 @@ def cal_migration(previous_status, current_status, onu_service, period_id):
 
 # return current status
 # origin method
-def reconfiguration(previous_wavelength, current_wavelength, previous_status, onu_service, onu_traffic, period_id):
+def reconfiguration_origin(previous_wavelength, current_wavelength, previous_status, onu_service, onu_traffic, period_id):
 	current_status = copy.deepcopy(previous_status)
 	pre_migrate_onu = set()    # contains onu waiting for re-loaded
 	used_wavelength = set()    # wavelength No. used in previous status
 	wavelength_diff = abs(current_wavelength - previous_wavelength)
 
-	current_traffic = {}  # calculating the current burden in each wavelength
+	current_burden = {}  # calculating the current burden in each wavelength
 	for i in range(WAVE_NUM):
-		current_traffic[i] = 0.0     # initialization
+		current_burden[i] = 0.0     # initialization
 	for key, value in current_status.items():
 		for onu_id in value:
-			current_traffic[key] += onu_traffic[period_id][onu_id]
-		if current_traffic[key] > 0.0:   # this wavelength is already used
+			current_burden[key] += onu_traffic[period_id][onu_id]
+		if current_burden[key] > 0.0:   # this wavelength is already used
 			used_wavelength.add(key)
 
-	current_traffic_sorted = sorted(current_traffic.items(), key=lambda current_traffic:current_traffic[1], reverse = True)
+	current_burden_sorted = sorted(current_burden.items(), key=lambda current_burden:current_burden[1], reverse = True)
 
 	if previous_wavelength > current_wavelength:  # shut down least-load wavelengths
 		for i in range(wavelength_diff): # delete onus in least-load wavelength and add to pre_migrate_onu 
-			least_load_wavelength = current_traffic_sorted[current_wavelength+i][0]
+			least_load_wavelength = current_burden_sorted[current_wavelength+i][0]
 			for onu_id in current_status[least_load_wavelength]:
 				pre_migrate_onu.add(onu_id)
 			current_status[least_load_wavelength] = []
@@ -127,14 +130,14 @@ def reconfiguration(previous_wavelength, current_wavelength, previous_status, on
 		for onu_id in value:
 			onu_traffic_perwave[onu_id] =  onu_traffic[period_id][onu_id]
 
-		if current_traffic[key] > 10.001: # overflow, reload it; due to float precision problem,set 10.0001 here
-			current_traffic[key] = 0.0
+		if current_burden[key] > CAPACITY: # overflow, reload it; due to float precision problem,set CAPACITY001 here
+			current_burden[key] = 0.0
 			onu_traffic_perwave_sorted = sorted(onu_traffic_perwave.items(), key=lambda onu_traffic_perwave:onu_traffic_perwave[1], reverse = True)
 			current_status[key] = []
 			index = 0
-			while current_traffic[key] + onu_traffic_perwave_sorted[index][1] <= 10.0:
+			while current_burden[key] + onu_traffic_perwave_sorted[index][1] <= CAPACITY:
 				current_status[key].append(onu_traffic_perwave_sorted[index][0])
-				current_traffic[key] += onu_traffic_perwave_sorted[index][1]
+				current_burden[key] += onu_traffic_perwave_sorted[index][1]
 				index += 1
 			for i in range(index, len(onu_traffic_perwave_sorted)):
 				pre_migrate_onu.add(onu_traffic_perwave_sorted[i][0])
@@ -150,8 +153,8 @@ def reconfiguration(previous_wavelength, current_wavelength, previous_status, on
 	for item in pre_migrate_traffic_sorted:    # sorted in descending order by traffic
 		is_pack = False
 		for wave_id in used_wavelength:
-			if item[1] + current_traffic[wave_id] <= 10.0:
-				current_traffic[wave_id] += item[1]
+			if item[1] + current_burden[wave_id] <= CAPACITY:
+				current_burden[wave_id] += item[1]
 				current_status[wave_id].append(item[0])
 				is_pack = True
 				break
@@ -161,18 +164,19 @@ def reconfiguration(previous_wavelength, current_wavelength, previous_status, on
 					pack_position = i
 					#print 'not pack'
 					break      # pick a already-used wavelength randomly
-			current_traffic[pack_position] += item[1]
+			current_burden[pack_position] += item[1]
 			current_status[wave_id].append(item[0])
 
 	return current_status
 
 # migration
 # previous_status: dict, keys are wavelength number, value is list contains ONUs associated with this wavelength
-# current_status: the same as previous_status, format: {0: [0, 2, 2], 1: [...]}
-# format: {0: [0, 2, 2], 1: [...]}
-def migration(working_wavelength, onu_service, onu_traffic):
+# current_status: the same as previous_status, format: {0: [0, 2, 3], 1: [...]}
+# format: {0: [0, 2, 3], 1: [...]}
+# migration_one_period: traffic migration, {'I': 0.0, 'F': 0.0,  'W': 0.0, 'G': 0.0, 'S': 0.0, 'V': 0.0}, 
+# migration_count: dict, value is list, length of value is 167, migration traffic in each period
+def migration_origin(working_wavelength, onu_service, onu_traffic):
 	migration_count = {'I': [], 'F': [],  'W': [], 'G': [], 'S': [], 'V': []}
-
 	previous_status = {}
 	for i in range(WAVE_NUM):   # initialization
 		previous_status[i] = []
@@ -181,7 +185,7 @@ def migration(working_wavelength, onu_service, onu_traffic):
 				previous_status[i].append(j)
 
 	for i in range(PERIOD_NUM - 1):
-		current_status = reconfiguration(working_wavelength[i], working_wavelength[i+1], previous_status, onu_service, onu_traffic, i+1)
+		current_status = reconfiguration_origin(working_wavelength[i], working_wavelength[i+1], previous_status, onu_service, onu_traffic, i+1)
 		migration_one_period = cal_migration(previous_status, current_status, onu_service, i+1)
 		previous_status = copy.deepcopy(current_status)
 		for service_type in migration_count:
@@ -189,10 +193,11 @@ def migration(working_wavelength, onu_service, onu_traffic):
 		print 'period num: ' + str(i+1)
 	return migration_count
 
-# migration performance: calculating different traffic migration
-# migration_count: dict, value is list, length is 167
-def migration_static(migration_count, onu_traffic):
+# migration performance: calculating different traffic migration in all periods
+# migration_count: dict, value is list, length of value is 167
+def migration_static(migration_count, onu_traffic, working_wavelength_real):
 	migration_traffic = {'I': 0, 'F': 0,  'W': 0, 'G': 0, 'S': 0, 'V': 0}
+	energy = 0
 	for key, value in migration_count.items():
 		for item in value:
 			migration_traffic[key] += item
@@ -203,23 +208,304 @@ def migration_static(migration_count, onu_traffic):
 	for period in onu_traffic:
 		for item in period:
 			total_traffic += item
+	for item in working_wavelength_real:
+		energy += item
 	print 'migration traffic'
 	for key, value in migration_traffic.items():
 		print key, value
 	print 'total migration: ' + str(total_migration)
 	print 'total traffic: ' + str(total_traffic)
 	print 'migration rate: ' + str(round(total_migration / total_traffic, 4) * 100) + '%'
-	
+	print 'energy consumption: ' + str(energy)
+
+# sort onu_id in one wavelength by delay-sensitive traffic for reconfiguring in one wavelength
+# onu_list: onu_id in a wavelength
+def sort_onu_id_delay(onu_list, onu_service, period_id):
+	onu_id_delay_traffic = {}    # only delay-sensitive traffic is calculated
+	onu_id_delay = []
+	for onu_id in onu_list:
+		one_onu_service = onu_service[period_id][onu_id]
+		onu_id_delay_traffic[onu_id] = 0.0
+		for key, value in one_onu_service.items():
+			if key == 'S' or key == 'G':   # delay-sensitive traffic
+				onu_id_delay_traffic[onu_id] += float(value) * service_traffic[key]
+	onu_id_delay_traffic_sorted = sorted(onu_id_delay_traffic.items(), key=lambda onu_id_delay_traffic:onu_id_delay_traffic[1], reverse = True)
+	for item in onu_id_delay_traffic_sorted:
+		onu_id_delay.append(item[0])
+	return onu_id_delay
+
+# sort onu_id in pre_migrate_onu by overall traffic for relocating pre_migrate_onu	
+def sort_onu_id_overall(pre_migrate_onu, onu_traffic, period_id):
+	onu_id_overall_traffic = {}    # overall traffic is calculated
+	onu_id_overall = []
+	for onu_id in pre_migrate_onu:
+		onu_id_overall_traffic[onu_id] = onu_traffic[period_id][onu_id]
+	onu_id_overall_traffic_sorted = sorted(onu_id_overall_traffic.items(), key=lambda onu_id_overall_traffic:onu_id_overall_traffic[1], reverse = True)
+	for item in onu_id_overall_traffic_sorted:
+		onu_id_overall.append(item[0])
+	return onu_id_overall
+
+# sort wavelength by delay-sensitive traffic for shutting down reference
+def sort_wave_id_delay(used_wavelength, current_status, onu_service, period_id):
+	wave_id_delay_traffic = {}
+	wave_id_delay = []
+	for wave_id in used_wavelength:
+		wave_id_delay_traffic[wave_id] = 0.0
+		for onu_id in current_status[wave_id]:
+			one_onu_service = onu_service[period_id][onu_id]
+			onu_id_delay_traffic = 0.0
+			for key, value in one_onu_service.items():
+				if key == 'S' or key == 'G':   # delay-sensitive traffic
+					onu_id_delay_traffic += float(value) * service_traffic[key]
+			wave_id_delay_traffic[wave_id] += onu_id_delay_traffic
+	wave_id_delay_traffic_sorted = sorted(wave_id_delay_traffic.items(), key=lambda wave_id_delay_traffic:wave_id_delay_traffic[1], reverse = True)
+	for item in wave_id_delay_traffic_sorted:
+		wave_id_delay.append(item[0])
+	return wave_id_delay
+
+# get shutdown wavelength, shutdown_wave: number of shutdown wavelength
+# shutdown_wavelength: set
+def get_shutdown_wavelength(wave_id_delay, shutdown_wave_num):  # set
+	shutdown_wavelength = set()
+	for i in range(shutdown_wave_num):
+		shutdown_wavelength_id = wave_id_delay[-(i+1)]
+		shutdown_wavelength.add(shutdown_wavelength_id)
+	return shutdown_wavelength
+
+# get onu_in_shutdown_wave, format: set
+# shutdown_wavelength: set; onu_in_shutdown_wave: set
+def get_onu_in_shutwodn_wave(shutdown_wavelength, current_status_temp):
+	onu_in_shutdown_wave = set()
+	for shutdown_wavelength_id in shutdown_wavelength:
+		for onu_id in current_status_temp[shutdown_wavelength_id]:
+			onu_in_shutdown_wave.add(onu_id)
+	return onu_in_shutdown_wave
+
+# when a onu_id associate with a wavelength_id, decide whether the wavelength will overflow
+def predict_next_status(onu_id, wavelength_id, current_status, onu_traffic_predict, period_id):
+	is_future_overflow = False
+	wavelength_id_next_burden = 0.0
+	for onu_id in current_status[wavelength_id]:
+		wavelength_id_next_burden += onu_traffic_predict[period_id + 1][onu_id]
+	wavelength_id_next_burden += onu_traffic_predict[period_id + 1][onu_id]
+	if wavelength_id_next_burden > CAPACITY:
+		is_future_overflow = True
+	else:
+		is_future_overflow = False
+	return is_future_overflow
+
+# examine current burden in each wavelength, adjust overflowed wavelength
+# pre_migrate_onu: set, contains onu_id from overflowed wavelength
+# current_status: key = wave_id, value = list contains onu_id; overflowed onu_id have been moved
+# current_burden: key = wave_id, value = overall traffic;  overflowed onu_id have been moved
+# used_wavelength: set, contains wavelength_id being used
+def reconfiguration_initial(previous_status, onu_service, onu_traffic, period_id):
+	current_status = copy.deepcopy(previous_status)
+	pre_migrate_onu = set()    # contains onu waiting for re-located
+	used_wavelength = set()    # wavelength No. used
+	current_burden = {}  # calculating the current burden in each wavelength
+
+	for i in range(WAVE_NUM):
+		current_burden[i] = 0.0     # initialization
+	for key, value in current_status.items():
+		for onu_id in value:
+			current_burden[key] += onu_traffic[period_id][onu_id]
+		if current_burden[key] > 0.0:   # this wavelength is already used
+			used_wavelength.add(key)
+
+	for key, value in current_status.items():#examine current burden in each wavelength, adjust overflowed wavelength
+		onu_id_delay = sort_onu_id_delay(value, onu_service, period_id)  # sorted onu_id by delay_sensitive traffic
+		if current_burden[key] > CAPACITY: # overflow, reload it; due to float precision problem,set CAPACITY001 here
+			current_burden[key] = 0.0
+			current_status[key] = []
+			for i in range(len(onu_id_delay)): # add onu in decending order of delay_sensitive traffic
+				onu_id = onu_id_delay[i]
+				if current_burden[key] + onu_traffic[period_id][onu_id] <= CAPACITY:
+					current_status[key].append(onu_id)
+					current_burden[key] += onu_traffic[period_id][onu_id]
+				else:
+					pre_migrate_onu.add(onu_id)
+		else:
+			pass
+	return pre_migrate_onu, current_status, current_burden, used_wavelength
+
+# reconfiguration method when traffic increase
+def reconfiguration_traffic_increase(previous_wavelength, current_wavelength, onu_traffic, onu_traffic_predict, 
+	pre_migrate_onu, current_status, current_burden, used_wavelength, period_id):
+	onu_id_overall = sort_onu_id_overall(pre_migrate_onu, onu_traffic, period_id)  # list
+	for i in range(len(onu_id_overall)):
+		onu_id = onu_id_overall[i]
+		is_locate = False
+		for wavelength in used_wavelength:
+			is_future_overflow = predict_next_status(onu_id, wavelength, current_status, onu_traffic_predict, period_id)
+			if current_burden[wavelength] + onu_traffic[period_id][onu_id] <= CAPACITY and not is_future_overflow:
+				current_status[wavelength].append(onu_id)
+				current_burden[wavelength] += onu_traffic[period_id][onu_id]
+				pre_migrate_onu.remove(onu_id)
+				is_locate = True
+				break
+		if not is_locate:    # can not be contained in existing wavelength, power on new wavelength
+			for new_wave in range(WAVE_NUM):
+				if new_wave not in used_wavelength:
+					used_wavelength.add(new_wave)
+					current_status[new_wave].append(onu_id)
+					current_burden[new_wave] += onu_traffic[period_id][onu_id]
+					pre_migrate_onu.remove(onu_id)
+					break
+	if len(pre_migrate_onu) != 0:   # pre_migrate_onu should be empty
+		print 'reconfiguration error when traffic increase'
+	working_wavelength_real = len(used_wavelength)
+	return current_status, working_wavelength_real
+
+# reconfiguration method when traffic decrease
+def reconfiguration_traffic_decrease(previous_wavelength, current_wavelength, onu_service, onu_traffic, onu_traffic_predict, 
+	pre_migrate_onu, current_status, current_burden, used_wavelength, period_id):
+	wave_id_delay = sort_wave_id_delay(used_wavelength, current_status, onu_service, period_id)  # sort wavelength by delay-sensitive traffic
+	for shutdown_wave_num in range(previous_wavelength - current_wavelength + 1): # shutdown_wave's range
+		pre_migrate_onu_temp = copy.deepcopy(pre_migrate_onu)
+		current_status_temp = copy.deepcopy(current_status)
+		current_burden_temp = copy.deepcopy(current_burden)
+		used_wavelength_temp = copy.deepcopy(used_wavelength)
+		shutdown_wavelength = get_shutdown_wavelength(wave_id_delay, shutdown_wave_num)  # set
+		used_wavelength_temp = used_wavelength_temp - shutdown_wavelength  # set's operation
+
+		onu_in_shutdown_wave = get_onu_in_shutwodn_wave(shutdown_wavelength, current_status_temp)  # set
+		pre_migrate_onu_temp = pre_migrate_onu_temp | onu_in_shutdown_wave
+		onu_id_overall = sort_onu_id_overall(pre_migrate_onu_temp, onu_traffic, period_id)  # list
+		max_shutdown_wave = shutdown_wave_num
+		for i in range(len(onu_id_overall)):
+			onu_id = onu_id_overall[i]
+			is_locate = False
+			for wavelength in used_wavelength_temp:
+				is_future_overflow = predict_next_status(onu_id, wavelength, current_status, onu_traffic_predict, period_id)
+				if current_burden[wavelength] + onu_traffic[period_id][onu_id] <= CAPACITY and not is_future_overflow:
+					current_status_temp[wavelength].append(onu_id)
+					current_burden_temp[wavelength] += onu_traffic[period_id][onu_id]
+					pre_migrate_onu_temp.remove(onu_id)
+					is_locate = True
+					break
+			if not is_locate:
+				max_shutdown_wave = shutdown_wave_num - 1
+				break
+	if max_shutdown_wave == -1:  # need to power on new wavelength
+		onu_id_overall = sort_onu_id_overall(pre_migrate_onu, onu_traffic, period_id)  # list
+		for new_wave in range(WAVE_NUM):
+			if new_wave not in used_wavelength:
+				used_wavelength.add(new_wave)
+				current_status[new_wave].append(onu_id)
+				current_burden[new_wave] += onu_traffic[period_id][onu_id]
+				pre_migrate_onu.remove(onu_id)
+				break
+		print 'need to power on new wavelength when traffic decline'
+	else:
+		onu_in_shutdown_wave = get_onu_in_shutwodn_wave(shutdown_wavelength, current_status)
+		pre_migrate_onu = pre_migrate_onu | onu_in_shutdown_wave
+		onu_id_overall = sort_onu_id_overall(pre_migrate_onu, onu_traffic, period_id)  # list
+		for i in range(len(onu_id_overall)):
+			onu_id = onu_id_overall[i]
+			is_locate = False
+			for wavelength in used_wavelength:
+				is_future_overflow = predict_next_status(onu_id, wavelength, current_status, onu_traffic_predict, period_id)
+				if current_burden[wavelength] + onu_traffic[period_id][onu_id] <= CAPACITY and not is_future_overflow:
+					current_status[wavelength].append(onu_id)
+					current_burden[wavelength] += onu_traffic[period_id][onu_id]
+					pre_migrate_onu.remove(onu_id)
+					is_locate = True
+					break
+	working_wavelength_real = len(used_wavelength)
+	return current_status, working_wavelength_real
+
+# return current status
+# reconfiguration method based on prediction data, details can be referred to notebook
+# current_status: format: {0: [0, 2, 3], 1: [...]}
+def reconfiguration_Dtree(previous_wavelength, current_wavelength, previous_status, onu_service, onu_traffic, 
+	onu_traffic_predict, period_id):
+	pre_migrate_onu, current_status, current_burden, used_wavelength = reconfiguration_initial \
+	(previous_status, onu_service, onu_traffic, period_id) #overflowed onu_id have been moved
+
+	if previous_wavelength <= current_wavelength:  # traffic increase
+		current_status, working_wavelength_real = reconfiguration_traffic_increase \
+		(previous_wavelength, current_wavelength, onu_traffic, onu_traffic_predict, pre_migrate_onu, current_status, current_burden, used_wavelength, period_id)
+	else:   # traffic decrease
+		current_status, working_wavelength_real = reconfiguration_traffic_decrease \
+		(previous_wavelength, current_wavelength, onu_service, onu_traffic, onu_traffic_predict, pre_migrate_onu, current_status, current_burden, used_wavelength, period_id)
+	return current_status, working_wavelength_real
+
+# migration using prediction data, including Dtree, Lweek, Mused.
+# previous_status: dict, keys are wavelength number, value is list contains ONUs associated with this wavelength
+# current_status: the same as previous_status, format: {0: [0, 2, 2], 1: [...]}
+# format: {0: [0, 2, 2], 1: [...]}
+def migration_Dtree(working_wavelength, onu_service, onu_traffic, onu_service_predict, onu_traffic_predict):
+	migration_count = {'I': [], 'F': [],  'W': [], 'G': [], 'S': [], 'V': []}
+	previous_status = {}
+	working_wavelength_real = []
+	for i in range(WAVE_NUM):   # initialization
+		previous_status[i] = []
+		if i == 0:              # the start of time is 0:00 and use only one wavelength
+			for j in range(ONU_NUM):
+				previous_status[i].append(j)
+
+	for i in range(PERIOD_NUM - 2):
+		current_status, working_wavelength_real_temp = reconfiguration_Dtree \
+			(working_wavelength[i], working_wavelength[i+1], previous_status, onu_service, onu_traffic, onu_traffic_predict, i+1)
+		migration_one_period = cal_migration(previous_status, current_status, onu_service, i+1)
+		previous_status = copy.deepcopy(current_status)
+		working_wavelength_real.append(working_wavelength_real_temp)
+		for service_type in migration_count:
+			migration_count[service_type].append(migration_one_period[service_type])
+		print 'period num: ' + str(i+1)
+	return migration_count, working_wavelength_real
+
+# get user_activity
+def get_user_activity(user_activity_path):
+	pkl_file = open(user_activity_path, 'rb')
+	user_activity = pickle.load(pkl_file)
+	pkl_file.close()
+	return user_activity
+
 
 if __name__ == '__main__':
 	# user_activity format: key = range(1000), value = list contains service type, length = 168
 
-	# origin method
 	user_activity_origin_path = '../data/user_activity_test/user_activity_origin.pkl'
-	pkl_file = open(user_activity_origin_path, 'rb')
-	user_activity_origin = pickle.load(pkl_file)
+	user_activity_Dtree_path = '../data/user_activity_test/user_activity_Dtree.pkl'
+	user_activity_Lweek_path = '../data/user_activity_test/user_activity_Lweek.pkl'
+	user_activity_Mused_path = '../data/user_activity_test/user_activity_Mused.pkl'
+	user_activity_origin = get_user_activity(user_activity_origin_path)
+	user_activity_Dtree = get_user_activity(user_activity_Dtree_path)
+	user_activity_Lweek = get_user_activity(user_activity_Lweek_path)
+	user_activity_Mused = get_user_activity(user_activity_Mused_path)
+
 	onu_service, onu_traffic = traffic_static(user_activity_origin)
 	working_wavelength = first_fit(onu_traffic)
-	migration_count = migration(working_wavelength, onu_service, onu_traffic)
-	migration_static(migration_count, onu_traffic)
-	pkl_file.close()
+
+
+	# conventional method
+	# migration_count = migration_origin(working_wavelength, onu_service, onu_traffic)
+	# migration_static(migration_count, onu_traffic)
+
+	# predition method by real data
+	onu_service_predict = copy.deepcopy(onu_service)
+	onu_traffic_predict = copy.deepcopy(onu_traffic)
+	migration_count, working_wavelength_real = migration_Dtree(working_wavelength, onu_service, onu_traffic, onu_service_predict, onu_traffic_predict)
+	migration_static(migration_count, onu_traffic, working_wavelength_real)
+	energy = 0
+	for item in working_wavelength:
+		energy += item
+	print 'origin energy: ' + str(energy)
+	print working_wavelength
+	print working_wavelength_real
+
+	'''
+	n = [i for i in range(168)]
+	traffic_period = [0.0 for i in range(PERIOD_NUM)]
+	traffic_period_predict = [0.0 for i in range(PERIOD_NUM)]
+	for i in range(PERIOD_NUM):
+		for item in onu_traffic[i]:
+			traffic_period[i] += item
+		for item in onu_traffic_predict[i]:
+			traffic_period_predict[i] += item
+	plt.plot(n, traffic_period, color = 'red')
+	plt.plot(n, traffic_period_predict, color = 'blue')
+	plt.show()
+	'''
