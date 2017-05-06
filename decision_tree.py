@@ -97,7 +97,7 @@ def get_profile(profile_path):
 def feature_select(data_dict, profile, user_id_index, is_over_sampling):
 	feature = []
 	category = []
-	over_sampling_num = 20
+	over_sampling_num = 0
 	for user_id, all_dates in data_dict.items():
 		real_user_id = user_id_index[user_id]
 		one_user_profile = copy.deepcopy(profile[real_user_id])  # gender, age, edu, job
@@ -110,7 +110,11 @@ def feature_select(data_dict, profile, user_id_index, is_over_sampling):
 					sample.append(i)  #(int(i/6))        # i represents hour
 					sample.append(day_index[date])  # day_index: 7 days in one week
 					feature.append(sample)
-					category.append(activity[i])
+					#category.append(activity[i])
+					if activity[i] == 'F':
+						category.append('F')
+					else:
+						category.append('O')
 					if is_over_sampling and len(sample) > 5:  # make sure that features are completed
 						if activity[i] != 'F':
 							sample_over = [[] for k in range(over_sampling_num)]
@@ -118,7 +122,7 @@ def feature_select(data_dict, profile, user_id_index, is_over_sampling):
 								sample_over[j] = copy.deepcopy(sample)
 								sample_over[j][-3] = random.randint(0, 8)  # random disturbance in job feature
 								feature.append(sample_over[j])
-								category.append(activity[i])
+								category.append('O')
 	return feature, category
 
 # build features, all features
@@ -241,7 +245,6 @@ def conventional_method_Lweek(feature_train, feature_test, category_train):
 		category_predict[service_position] = category_train[i]
 	return category_predict
 
-
 # decision tree
 def decision_tree(feature_train, feature_test, category_train):
 	clf = tree.DecisionTreeClassifier()
@@ -251,17 +254,22 @@ def decision_tree(feature_train, feature_test, category_train):
 	for item in category_predict:
 		if item == 'F':
 			category_Dtree.append('F')
-		elif item == 'I':
-			category_Dtree.append('I')
-		elif item == 'W':
-			category_Dtree.append('W')
-		elif item == 'G':
-			category_Dtree.append('G')
-		elif item == 'S':
-			category_Dtree.append('S')
 		else:
-			category_Dtree.append('V')
+			category_Dtree.append('O')
 	return category_Dtree 
+
+# random forests
+def random_forests(feature_train, feature_test, category_train):
+	clf = RandomForestClassifier(n_estimators = 80)
+	clf = clf.fit(feature_train, category_train)
+	category_predict = clf.predict(feature_test)
+	category_RF = []
+	for item in category_predict:
+		if item == 'F':
+			category_RF.append('F')
+		else:
+			category_RF.append('O')
+	return category_RF
 
 # save user_activity as pkl file for migration.py
 def user_activity_save(user_activity, user_activity_path):
@@ -312,7 +320,10 @@ if __name__ == '__main__':
 	print 'feature_test sample: ' + str(feature_test[1000])
 
 	# decision tree
-	category_Dtree = decision_tree(feature_train, feature_test, category_train)
+	#category_Dtree = decision_tree(feature_train, feature_test, category_train)
+
+	# random_forests
+	category_RF = random_forests(feature_train, feature_test, category_train)
 
 	# conventional method: most-used service
 	#category_Mused = conventional_method_Mused(feature_train, feature_test, category_train)
@@ -321,8 +332,8 @@ if __name__ == '__main__':
 	#category_Lweek = conventional_method_Lweek(feature_train, feature_test, category_train)
 
 
-	cal_hit_rate(category_Dtree, category_test)
-	calculating_F_value(category_Dtree, category_test)
+	cal_hit_rate(category_RF, category_test)
+	calculating_F_value(category_RF, category_test)
 	
 
 	# this part is for migration.py
@@ -332,11 +343,12 @@ if __name__ == '__main__':
 	user_activity_origin = activity_restore(feature_test, category_test)
 	user_activity_save(user_activity_origin, user_activity_origin_path)
 	'''
-	
+	'''
 	# predition data using decision_tree
 	user_activity_Dtree_path = '../data/user_activity_test/user_activity_Dtree.pkl'
 	user_activity_Dtree = activity_restore(feature_test, category_Dtree)
 	user_activity_save(user_activity_Dtree, user_activity_Dtree_path)
+	'''
 	'''
 	# predition data according to users' most-used service
 	user_activity_Mused_path = '../data/user_activity_test/user_activity_Mused.pkl'
