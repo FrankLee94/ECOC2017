@@ -320,10 +320,10 @@ if __name__ == '__main__':
 	print 'feature_test sample: ' + str(feature_test[1000])
 
 	# decision tree
-	#category_Dtree = decision_tree(feature_train, feature_test, category_train)
+	category_Dtree = decision_tree(feature_train, feature_test, category_train)
 
 	# random_forests
-	category_RF = random_forests(feature_train, feature_test, category_train)
+	#category_RF = random_forests(feature_train, feature_test, category_train)
 
 	# conventional method: most-used service
 	#category_Mused = conventional_method_Mused(feature_train, feature_test, category_train)
@@ -332,8 +332,8 @@ if __name__ == '__main__':
 	#category_Lweek = conventional_method_Lweek(feature_train, feature_test, category_train)
 
 
-	cal_hit_rate(category_RF, category_test)
-	calculating_F_value(category_RF, category_test)
+	cal_hit_rate(category_Dtree, category_test)
+	calculating_F_value(category_Dtree, category_test)
 	
 
 	# this part is for migration.py
