@@ -33,8 +33,8 @@ class Optical_Network_Unit:
 	def __init__(self, grant, state, state_start_time, start_packet, end_packet, 
 		total_sleep_time, total_packet, total_delay, sleep_time_select):
 		self.grant = grant
-		self.state = state
-		self.state_start_time = state_start_time
+		self.state = copy.deepcopy(state)
+		self.state_start_time = copy.deepcopy(state_start_time)
 		self.start_packet = start_packet
 		self.end_packet = end_packet
 		self.total_sleep_time = total_sleep_time
@@ -150,6 +150,7 @@ def polling(ONU):
 		packet, stamp = packet_generation_one_period()
 
 		absolute_clock = RTT        # before the first ONU sends data, the OLT needs to send a grant
+		detect_all_sleep = absolute_clock   # when all ONU sleep, absolute_clock will not continue
 		polling_init(ONU, packet, stamp, absolute_clock)   # report grant for the first time
 
 		while absolute_clock < ONE_PERIOD:
@@ -174,7 +175,6 @@ def polling(ONU):
 							ONU[i].state_start_time[2] = absolute_clock
 						else:
 							pass
-						absolute_clock += T_GUARD
 					else:                   # awaiting to active
 						ONU[i].state[1] = False
 						ONU[i].state[0] = True
@@ -195,6 +195,15 @@ def polling(ONU):
 						ONU[i].state[2] = True
 						ONU[i].total_sleep_time += absolute_clock - ONU[i].state_start_time[2]
 						ONU[i].state_start_time[2] = INF
+						ONU[i].state_start_time[1] = absolute_clock
+					else:
+						pass
+
+			if detect_all_sleep == absolute_clock:
+				absolute_clock += T_GUARD
+			else:
+				pass
+			detect_all_sleep = absolute_clock
 			print absolute_clock
 
 def test(a):
