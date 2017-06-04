@@ -30,6 +30,7 @@ ARRIVE_RATE = [10, 100, 1000, 10000]   # frames per second
 INF = 1e10
 
 class Optical_Network_Unit:
+	total_time = 0
 	def __init__(self, grant, state, state_start_time, start_packet, end_packet, 
 		total_sleep_time, total_packet, total_delay, sleep_time_select):
 		self.grant = grant
@@ -143,6 +144,19 @@ def delay_calculation(ONU_object, time_stamp, absolute_clock):
 		for i in range(ONU_object.end_packet - ONU_object.start_packet + 1):
 			ONU_object.total_delay += absolute_clock - time_stamp[ONU_object.start_packet + i]
 
+# after each period (100s here), ONU needs to be reset. make sure that packet_delay...can not be reset
+def reset(ONU):
+	for i in range(ONU_NUM):
+		ONU[i].grant = 0
+		ONU[i].state[0] = True     # active
+		ONU[i].state[1] = False
+		ONU[i].state[2] = False
+		ONU[i].state[3] = False
+		ONU[i].state_start_time[0] = INF
+		ONU[i].state_start_time[1] = INF
+		ONU[i].state_start_time[2] = INF
+		ONU[i].start_packet = -1
+		ONU[i].end_packet = -1
 
 # polling scheme
 def polling(ONU):
@@ -175,6 +189,7 @@ def polling(ONU):
 							ONU[i].state_start_time[2] = absolute_clock
 						else:
 							pass
+						absolute_clock += T_GUARD
 					else:                   # awaiting to active
 						ONU[i].state[1] = False
 						ONU[i].state[0] = True
@@ -205,17 +220,37 @@ def polling(ONU):
 				pass
 			detect_all_sleep = absolute_clock
 			print absolute_clock
+		Optical_Network_Unit.total_time += ONE_PERIOD
+		for i in range(ONU_NUM):
+			ONU[i].total_packet += len(packet[i])
+		reset(ONU)  # reset some parameters 
 
-def test(a):
-	a = 10
-	return a
 
+def statistics(ONU):
+	P_active = 6.35
+	P_sleep = 0.7
+	sum_packet = 0
+	sum_delay = 0
+	sum_sleep_time = 0
+	sum_time = ONU_NUM * Optical_Network_Unit.total_time
+	for i in range(ONU_NUM):
+		sum_packet += ONU[i].total_packet
+		sum_delay += ONU[i].total_delay
+		sum_sleep_time += ONU[i].total_sleep_time
+	average_delay = int(sum_delay / sum_packet)
+	average_energy = (P_sleep * sum_sleep_time + (sum_time - sum_sleep_time) * P_active) / float(sum_time)
+	print 'average_delay' + '\t' + str(average_delay)
+	print 'average_energy' + '\t' + str(average_energy)
+	print 'sum_sleep_time' + '\t' + str(sum_sleep_time)
 
 if __name__ == '__main__':
 
 	ONU = ONU_initialization()
 	polling(ONU)
+	print 'polling end'
 	for i in range(ONU_NUM):
-		print 'ONU:' + '\t' + str(i) + '\t' + str(ONU[i].total_sleep_time) + '\t' + str(ONU[i].total_delay)
+		print 'ONU:  ' + str(i) + '\t' + str(ONU[i].total_sleep_time) + '\t' + str(ONU[i].total_delay)
+	print 'start statistics'
+	statistics(ONU)
 
 
