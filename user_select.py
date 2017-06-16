@@ -7,7 +7,7 @@
 
 import pickle
 import random
-USER_SELECT_POOL_NUM = 400
+USER_SELECT_POOL_NUM = 300
 
 
 # get user_status
@@ -73,10 +73,10 @@ def user_pick(rate_Dtree_dict, rate_Lweek_dict, rate_diff_dict):
 	for item in rate_diff_dict_sorted:
 		user_id = item[0]
 		item_index += 1
-		if rate_Dtree_dict[user_id] > 75.0 && rate_Lweek_dict[user_id] > 75.0:
+		if rate_Dtree_dict[user_id] > 78.0 and rate_Lweek_dict[user_id] > 0.0:
 			user_pool_id.append(user_id)
-			index += 1
-		if index >= USER_SELECT_POOL_NUM:
+			id_index += 1
+		if id_index >= USER_SELECT_POOL_NUM:
 			print 'select completely'
 			print 'item index' + '\t' + str(item_index)
 			break
@@ -108,29 +108,56 @@ def statistic(user_pool_id, user_status_predict_Dtree_all, user_status_test_all)
 	print 'off_on_rate' + '\t' + str(off_on_rate) + '%'
 	print 'off_off_rate' + '\t' + str(off_off_rate) + '%'
 	print 'hit_rate' + '\t' + str(hit_rate) + '%'
+	return hit_rate
+
+# save user_id for sleep.py
+def save_file_for_sleep(user_pool_id_select, file_path):
+	output = open(file_path, 'w')
+	pickle.dump(user_pool_id_select, output)
+	output.close()
 
 
 if __name__ == '__main__':
+	'''
 	category_predict_Dtree, category_predict_Lweek, category_test = get_user_status()
 	user_status_predict_Dtree_all, user_status_predict_Lweek_all, user_status_test_all = user_status_rearrange(category_predict_Dtree, category_predict_Lweek, category_test)
 	rate_Dtree_dict, rate_Lweek_dict, rate_diff_dict = rate_calculating(user_status_predict_Dtree_all, user_status_predict_Lweek_all, user_status_test_all)
 	user_pool_id = user_pick(rate_Dtree_dict, rate_Lweek_dict, rate_diff_dict)
 
 	print 'overall Dtree statistic'
-	statistic(user_pool_id, user_status_predict_Dtree_all, user_status_test_all)
+	hit_rate_1 = statistic(user_pool_id, user_status_predict_Dtree_all, user_status_test_all)
 	print 'overall Lweek statistic'
-	statistic(user_pool_id, user_status_predict_Lweek_all, user_status_test_all)
+	hit_rate_2 = statistic(user_pool_id, user_status_predict_Lweek_all, user_status_test_all)
+	print 'diff' + '\t' + str(hit_rate_1 - hit_rate_2)
 
+	print '\n'
+	print 'random test 128'
 	random.shuffle(user_pool_id)
-	user_pool_id_select = user_pool_id[0 : 127]
+	user_pool_id_select = user_pool_id[0 : 128]
+	print 'length' + '\t' + str(len(user_pool_id_select))
 	print 'overall Dtree statistic'
-	statistic(user_pool_id, user_status_predict_Dtree_all, user_status_test_all)
+	hit_rate_1 = statistic(user_pool_id_select, user_status_predict_Dtree_all, user_status_test_all)
 	print 'overall Lweek statistic'
-	statistic(user_pool_id, user_status_predict_Lweek_all, user_status_test_all)
+	hit_rate_2 = statistic(user_pool_id_select, user_status_predict_Lweek_all, user_status_test_all)
+	print 'diff' + '\t' + str(hit_rate_1 - hit_rate_2)
+	file_path_1 = './user_id_128_2.pkl'
+	save_file_for_sleep(user_pool_id_select, file_path_1)
+	print 'user_id_128'
+	print user_pool_id_select
 
+	print '\n'
+	print 'random test 256'
 	random.shuffle(user_pool_id)
-	user_pool_id_select = user_pool_id[0 : 255]
+	user_pool_id_select = user_pool_id[0 : 256]
+	print 'length' + '\t' + str(len(user_pool_id_select))
 	print 'overall Dtree statistic'
-	statistic(user_pool_id_select, user_status_predict_Dtree_all, user_status_test_all)
+	hit_rate_1 = statistic(user_pool_id_select, user_status_predict_Dtree_all, user_status_test_all)
 	print 'overall Lweek statistic'
-	statistic(user_pool_id_select, user_status_predict_Lweek_all, user_status_test_all)
+	hit_rate_2 = statistic(user_pool_id_select, user_status_predict_Lweek_all, user_status_test_all)
+	print 'diff' + '\t' + str(hit_rate_1 - hit_rate_2)
+
+	file_path_2 = './user_id_256_2.pkl'
+	save_file_for_sleep(user_pool_id_select, file_path_2)
+	print 'user_id_256'
+	print user_pool_id_select
+	'''
