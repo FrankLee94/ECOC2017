@@ -298,6 +298,38 @@ def activity_restore(feature, category):
 		user_activity[user_id][position] = category[i]
 	return user_activity
 
+def counting_accuate_rate(category_Dtree, category_test):
+	on_on = 0
+	on_off = 0
+	off_on = 0
+	off_off = 0
+	print len(category_test)
+	print len(category_Dtree)
+	for i in range(21504):        #(len(category_Dtree)):
+		if category_Dtree[i] == 'O' and category_test[i] == 'O':
+			on_on += 1
+		elif category_Dtree[i] == 'O' and category_test[i] == 'F':
+			on_off += 1
+		elif category_Dtree[i] == 'F' and category_test[i] == 'O':
+			off_on += 1
+		else:
+			off_off += 1
+	print 'on_on' + '\t' + str(on_on)
+	print 'on_off' + '\t' + str(on_off)
+	print 'off_on' + '\t' + str(off_on)
+	print 'off_off' + '\t' + str(off_off)
+
+# save file for sleep.py
+def save_file_for_sleep(category_predict, category_test):
+	category_predict_path = '../data/category_predict_Dtree.pkl'
+	category_test_path = '../data/category_test.pkl'
+	output_1 = open(category_predict_path, 'wb')
+	pickle.dump(category_predict, output_1)
+	output_2 = open(category_test_path, 'wb')
+	pickle.dump(category_test, output_2)
+	output_1.close()
+	output_2.close()
+
 if __name__ == '__main__':
 	'''
 	activity_dict_path = '../data/activity_dict.pkl'
@@ -335,6 +367,9 @@ if __name__ == '__main__':
 	cal_hit_rate(category_Dtree, category_test)
 	calculating_F_value(category_Dtree, category_test)
 	
+	counting_accuate_rate(category_Dtree, category_test)
+
+	save_file_for_sleep(category_Dtree, category_test)
 
 	# this part is for migration.py
 	'''

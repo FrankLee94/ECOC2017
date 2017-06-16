@@ -17,19 +17,21 @@ ONU_NUM = 128
 RTT = 100             # single trip, 0.1ms
 UPSTREAM_RATE = 1e9   # 1000 Mbit/s
 PERIOD_NUM = 168        # 168, 7 days, 7 * 24 hours
-ONE_PERIOD = 1e8      # 1e8, 100s
+ONE_PERIOD = 1e7      # 1e8, 100s
 SMALL_PERIOD = 1e6    # 1s
-T_SLEEP_LONG = 50000   # 50ms
-T_SLEEP_SHORT = 20000   # 20ms
+#T_SLEEP_LONG = 70 * 1000   # 50ms
+#T_SLEEP_SHORT = 50 * 1000   # 20ms
 T_AWAITING = 5000        # 5ms
 T_RECOVERY = 2000       # 2ms
 T_GUARD = 5             # 5μs
 #MAX_BUFFER = 1e6        # 10M
 MAX_GRANT = 50000    # bit, 50μs, 50μs * 1e9 bit/s = 50000 bit 
-ARRIVE_RATE = [50, 100, 1000, 10000]   # frames per second
+ARRIVE_RATE_HIGH = 1000   # frames per second
 ARRIVE_RATE_LOW = 10      # when user is off
 INF = 1e10
 
+global T_SLEEP_LONG
+global T_SLEEP_SHORT
 
 class Optical_Network_Unit:
 	total_time = 0
@@ -49,7 +51,7 @@ class Optical_Network_Unit:
 # state = [active, awaiting, recovery, sleep]
 # state_start_time = [awaiting, recovery, sleep]
 def ONU_initialization():
-	global sleep_period
+	Optical_Network_Unit.total_time = 0
 	grant = 0
 	state = [True, False, False, False]
 	state_start_time = [INF, INF, INF]
@@ -58,8 +60,8 @@ def ONU_initialization():
 	total_sleep_time = 0
 	total_packet = 0
 	total_delay = 0
-	sleep_time_select = 5000
-	
+	sleep_time_select = 0
+
 	ONU = []
 	for i in range(ONU_NUM):
 		ONU_object = Optical_Network_Unit(grant, state, state_start_time, start_packet, end_packet, 
@@ -70,7 +72,7 @@ def ONU_initialization():
 # get user_status
 # category_test, list, length = 168000
 def get_user_status():
-	category_predict_path = './category_predict.pkl'
+	category_predict_path = './category_predict_Lweek.pkl'
 	category_test_path = './category_test.pkl'
 	pkl_file_1 = open(category_predict_path, 'rb')
 	category_predict = pickle.load(pkl_file_1)
@@ -82,30 +84,33 @@ def get_user_status():
 
 # rearrange the user status
 def user_status_rearrange(category_predict, category_test):
-	user_status_predict = [['F' for i in range(168)] for i in range(ONU_NUM)]
-	user_status_test = [['F' for i in range(168)] for i in range(ONU_NUM)]
-	for i in range(ONU_NUM):
+	user_status_predict_all = [['F' for i in range(168)] for i in range(1000)]
+	user_status_test_all = [['F' for i in range(168)] for i in range(1000)]
+	for i in range(1000):
 		for j in range(168):
-			user_status_predict[i][j] = category_predict[i*168 + j]
-			user_status_test[i][j] = category_test[i*168 + j]
+			user_status_predict_all[i][j] = category_predict[i*168 + j]
+			user_status_test_all[i][j] = category_test[i*168 + j]
+	return user_status_predict_all, user_status_test_all
+
+# select users
+def user_select(user_status_predict_all, user_status_test_all):
+	user_status_predict = []
+	user_status_test = []
+	for i in range(ONU_NUM):
+		user_status_predict.append(user_status_predict_all[i])
+		user_status_test.append(user_status_test_all[i])
 	return user_status_predict, user_status_test
 
 # generate packets for a ONU in ONE_PERIOD
 # ONE_PERIOD has 100 SMALL_PERIOD
 def packet_generation(is_ONU_on):
-	rate_num = len(ARRIVE_RATE)
 	onu_packet = []
 	time_stamp = []  # record the generation time of each packet
 	time_index = 0
 	small_period_index = 0
-	arrive_rate_select = ARRIVE_RATE[random.randint(0, rate_num - 1)]
 	while time_index < ONE_PERIOD:
 		if is_ONU_on == True:
-			if int(time_index / SMALL_PERIOD) != small_period_index:    # generate different arrive-rate packets
-				small_period_index = int(time_index / SMALL_PERIOD)
-				arrive_rate_select = ARRIVE_RATE[random.randint(0, rate_num - 1)]
-			else:
-				pass
+			arrive_rate_select = ARRIVE_RATE_HIGH
 		else:        # ONU is off
 			arrive_rate_select = ARRIVE_RATE_LOW
 
@@ -134,6 +139,16 @@ def packet_generation_one_period(user_status_one_period):
 		packet[i] = copy.deepcopy(onu_packet)
 		stamp[i] = copy.deepcopy(time_stamp)
 	return packet, stamp
+
+# change sleep time according to predict result
+def sleep_time_change(ONU, user_status_one_period):
+	global T_SLEEP_LONG
+	global T_SLEEP_SHORT
+	for i in range(ONU_NUM):
+		if user_status_one_period[i] == 'O':
+			ONU[i].sleep_time_select = T_SLEEP_SHORT
+		else:
+			ONU[i].sleep_time_select = T_SLEEP_LONG
 
 # determine the transmission packet
 # make sure that the time stamp of end packet can not be larger than absolute_clock
@@ -193,16 +208,17 @@ def reset(ONU):
 		ONU[i].end_packet = -1
 
 # polling scheme
-def polling(ONU, user_status_test):
-	for hour_index in range(PERIOD_NUM):
-		user_status_one_period = [user_status_test[i][hour_index] for i in range(ONU_NUM)]
-		packet, stamp = packet_generation_one_period(user_status_one_period)
+def polling(ONU, user_status_test, user_status_predict):
+	for hour_index in range(24 * 7):
+		user_status_one_period_real = [user_status_test[i][hour_index] for i in range(ONU_NUM)]
+		user_status_one_period_predict = [user_status_predict[i][hour_index] for i in range(ONU_NUM)]
+		packet, stamp = packet_generation_one_period(user_status_one_period_real)
+		sleep_time_change(ONU, user_status_one_period_real)
 
 		absolute_clock = RTT        # before the first ONU sends data, the OLT needs to send a grant
 		detect_all_sleep = absolute_clock   # when all ONU sleep, absolute_clock will not continue
 		polling_init(ONU, packet, stamp, absolute_clock)   # report grant for the first time
 
-		print 'period index' + '\t' + str(hour_index)
 		while absolute_clock < ONE_PERIOD:
 			for i in range(ONU_NUM):
 				if ONU[i].state[0] == True:    # active
@@ -255,7 +271,7 @@ def polling(ONU, user_status_test):
 			else:
 				pass
 			detect_all_sleep = absolute_clock
-			#print absolute_clock
+			#print str(hour_index) + '\t' + str(absolute_clock)
 
 		Optical_Network_Unit.total_time += ONE_PERIOD
 		for i in range(ONU_NUM):
@@ -274,14 +290,19 @@ def statistics(ONU):
 		sum_packet += ONU[i].total_packet
 		sum_delay += ONU[i].total_delay
 		sum_sleep_time += ONU[i].total_sleep_time
+
 	average_delay = int(sum_delay / sum_packet)
 	average_energy = (P_sleep * sum_sleep_time + (sum_time - sum_sleep_time) * P_active) / float(sum_time)
+	print 'sum_delay' + '\t' + str(sum_delay)
+	print 'sum_packet' + '\t' + str(sum_packet)
+	print 'simulation time' + '\t' + str(Optical_Network_Unit.total_time / 1e6) + 's'
 	return average_delay, average_energy
 
+
 def result_save(average_delay, average_energy):
-	file_path = './result_0606.txt'
+	file_path = './result_10ms.txt'
 	result_file = open(file_path, 'wb')
-	result_file.write('sleep period' + '\t' + str(5) + 'ms' + '\n')
+	result_file.write('sleep period' + '\t' + str(10) + 'ms' + '\n')
 	result_file.write('average_delay' + '\t' + str(average_delay) + 'μs' + '\n')
 	result_file.write('average_energy' + '\t' + str(average_energy) + 'W' + '\n')
 	result_file.write('\n')
@@ -292,25 +313,43 @@ def result_save(average_delay, average_energy):
 	result_file.write('T_AWAITING' + '\t' + str(T_AWAITING) + 'μs' + '\n')
 	result_file.write('T_RECOVERY' + '\t' + str(T_RECOVERY) + 'μs' + '\n')
 	result_file.write('MAX_GRANT' + '\t' + str(MAX_GRANT) + 'bit' + '\n')
-	result_file.write('ARRIVE_RATE' + '\t' + str(ARRIVE_RATE) + '\n')
+	result_file.write('ARRIVE_RATE_HIGH' + '\t' + str(ARRIVE_RATE_HIGH) + '\n')
 	result_file.write('ARRIVE_RATE_LOW' + '\t' + str(ARRIVE_RATE_LOW) + '\n')
 	result_file.close()
 
 
 if __name__ == '__main__':
+	global T_SLEEP_LONG
+	global T_SLEEP_SHORT
+	T_SLEEP_LONG = 0
+	T_SLEEP_SHORT = 0
 	category_predict, category_test = get_user_status()
-	user_status_predict, user_status_test = user_status_rearrange(category_predict, category_test)
+	user_status_predict_all, user_status_test_all = user_status_rearrange(category_predict, category_test)
+	user_status_predict, user_status_test = user_select(user_status_predict_all, user_status_test_all)
 
-	start =time.clock()
-	print 'polling start'
-	ONU = ONU_initialization()
-	polling(ONU, user_status_test)
-	print 'polling end'
-	end = time.clock()
-	average_delay, average_energy = statistics(ONU)
+	file_precise = open('./precise.txt', 'wb')
+	s_long = [100, 90, 15, 15, 25, 30, 90, 50]
+	s_short = [90, 60, 5, 10, 20, 10, 80, 30]
+	for i in range(8):
+		T_SLEEP_LONG = s_long[i] * 1000
+		T_SLEEP_SHORT = s_short[i] * 1000
 
-	print 'average_delay' + '\t' + str(average_delay)
-	print 'average_energy' + '\t' + str(average_energy)
-	result_save(average_delay, average_energy)
-	print 'simulation end'
-	print 'running time' + '\t' + str(end - start) + 's'
+		start =time.clock()
+		print 'T_SLEEP_LONG' + '\t' + str(T_SLEEP_LONG)
+		print 'T_SLEEP_SHORT' + '\t' + str(T_SLEEP_SHORT)
+		print 'polling start'
+		ONU = ONU_initialization()
+		polling(ONU, user_status_test, user_status_predict)
+		print 'polling end'
+		end = time.clock()
+		average_delay, average_energy = statistics(ONU)
+
+		print 'average_delay' + '\t' + str(average_delay)
+		print 'average_energy' + '\t' + str(average_energy)
+		#result_save(average_delay, average_energy)
+		print 'simulation end'
+		print 'running time' + '\t' + str(end - start) + 's'
+		file_precise.write(str(i) + '\t' + str(average_delay) + '\t' + str(average_energy) + '\n')
+
+
+	file_precise.close()
