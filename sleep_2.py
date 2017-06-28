@@ -17,7 +17,7 @@ ONU_NUM = 128
 RTT = 100             # single trip, 0.1ms
 UPSTREAM_RATE = 1e9   # 1000 Mbit/s
 PERIOD_NUM = 168        # 168, 7 days, 7 * 24 hours
-ONE_PERIOD = 1e7      # 1e8, 100s
+ONE_PERIOD = 1e7      # 1e7, 10s
 SMALL_PERIOD = 1e6    # 1s
 #T_SLEEP_LONG = 70 * 1000   # 50ms
 #T_SLEEP_SHORT = 50 * 1000   # 20ms
@@ -26,7 +26,7 @@ T_RECOVERY = 2000       # 2ms
 T_GUARD = 5             # 5μs
 #MAX_BUFFER = 1e6        # 10M
 MAX_GRANT = 50000    # bit, 50μs, 50μs * 1e9 bit/s = 50000 bit 
-ARRIVE_RATE_HIGH = 1000   # frames per second
+ARRIVE_RATE_HIGH = [500, 1000, 1500]   # frames per second
 ARRIVE_RATE_LOW = 10      # when user is off
 INF = 1e10
 
@@ -95,32 +95,67 @@ def user_status_rearrange(category_predict, category_test):
 
 # get user_id
 def get_user_id():
-	user_id_path = './user_id_128.pkl'
+	user_id_path = './user_id_256.pkl'
 	pkl_file = open(user_id_path, 'rb')
 	user_id = pickle.load(pkl_file)
 	pkl_file.close()
 	return user_id
 
+# user assignment
+# this function can be run only once
+def user_assign(user_id):
+	ONU_user = [[] for i in range(ONU_NUM)]
+	user_index = 0
+	for i in range(40):
+		ONU_user[i].append(user_id[user_index])
+		user_index += 1
+	for i in range(40):
+		ONU_user[40 + i].append(user_id[user_index])
+		ONU_user[40 + i].append(user_id[user_index + 1])
+		user_index += 2
+	for i in range(48):
+		ONU_user[80 + i].append(user_id[user_index])
+		ONU_user[80 + i].append(user_id[user_index + 1])
+		ONU_user[80 + i].append(user_id[user_index + 2])
+		user_index + 3
+	random.shuffle(ONU_user)
+	return ONU_user
+
+# get ONU_user
+def get_ONU_user():
+	ONU_user_path = './ONU_user.pkl'
+	pkl_file = open(ONU_user_path, 'rb')
+	ONU_user = pickle.load(pkl_file)
+	pkl_file.close()
+	return ONU_user
+
 # select users
-# user_id: list
-def user_select(user_status_predict_all, user_status_test_all, user_id):
-	user_status_predict = []
-	user_status_test = []
-	for i in user_id:
-		user_status_predict.append(user_status_predict_all[i])
-		user_status_test.append(user_status_test_all[i])
+# user_id: list, value is number
+# value range: 0 - 3, indicating the number of active users
+def user_select(user_status_predict_all, user_status_test_all, ONU_user):
+	user_status_predict = [[0 for i in range(168)] for j in range(ONU_NUM)]
+	user_status_test = [[0 for i in range(168)] for j in range(ONU_NUM)]
+	for i in range(ONU_NUM):
+		for j in range(168):
+			for user_id in ONU_user[i]:
+				if user_status_predict_all[user_id][j] == 'O':
+					user_status_predict[i][j] += 1
+				else:
+					pass
+				if user_status_test_all[user_id][j] == 'O':
+					user_status_test[i][j] += 1
 	return user_status_predict, user_status_test
 
 # generate packets for a ONU in ONE_PERIOD
 # ONE_PERIOD has 100 SMALL_PERIOD
-def packet_generation(is_ONU_on):
+def packet_generation(active_num):
 	onu_packet = []
 	time_stamp = []  # record the generation time of each packet
 	time_index = 0
 	small_period_index = 0
 	while time_index < ONE_PERIOD:
-		if is_ONU_on == True:
-			arrive_rate_select = ARRIVE_RATE_HIGH
+		if active_num != 0:
+			arrive_rate_select = ARRIVE_RATE_HIGH[active_num - 1]
 		else:        # ONU is off
 			arrive_rate_select = ARRIVE_RATE_LOW
 
@@ -141,11 +176,11 @@ def packet_generation_one_period(user_status_one_period):
 	packet = [0 for i in range(ONU_NUM)]
 	stamp = [0 for i in range(ONU_NUM)]
 	for i in range(ONU_NUM):
-		if user_status_one_period[i] == 'O':   # active
-			is_ONU_on = True
+		if user_status_one_period[i] != 0:   # active
+			active_num = user_status_one_period[i]
 		else:
-			is_ONU_on = False
-		onu_packet, time_stamp = packet_generation(is_ONU_on)
+			active_num = 0
+		onu_packet, time_stamp = packet_generation(active_num)
 		packet[i] = copy.deepcopy(onu_packet)
 		stamp[i] = copy.deepcopy(time_stamp)
 	return packet, stamp
@@ -155,7 +190,7 @@ def sleep_time_change(ONU, user_status_one_period):
 	global T_SLEEP_LONG
 	global T_SLEEP_SHORT
 	for i in range(ONU_NUM):
-		if user_status_one_period[i] == 'O':
+		if user_status_one_period[i] != 0:
 			ONU[i].sleep_time_select = T_SLEEP_SHORT
 		else:
 			ONU[i].sleep_time_select = T_SLEEP_LONG
@@ -329,14 +364,16 @@ def result_save(average_delay, average_energy):
 
 
 if __name__ == '__main__':
+	
 	global T_SLEEP_LONG
 	global T_SLEEP_SHORT
 	T_SLEEP_LONG = 0
 	T_SLEEP_SHORT = 0
 	category_predict, category_test = get_user_status()
 	user_status_predict_all, user_status_test_all = user_status_rearrange(category_predict, category_test)
-	user_id = get_user_id()
-	user_status_predict, user_status_test = user_select(user_status_predict_all, user_status_test_all, user_id)
+	#user_id = get_user_id()
+	ONU_user = get_ONU_user()
+	user_status_predict, user_status_test = user_select(user_status_predict_all, user_status_test_all, ONU_user)
 
 	file_precise = open('./precise.txt', 'wb')
 	s_long = [50, 10, 20, 20, 30, 40, 70, 80, 60, 100, 100, 90, 15, 15, 25, 30, 90, 50, 90, 80]
@@ -360,6 +397,5 @@ if __name__ == '__main__':
 		#result_save(average_delay, average_energy)
 		print 'running time' + '\t' + str(end - start) + 's'
 		file_precise.write(str(i) + '\t' + str(average_delay) + 'μs' + '\t' + str(average_energy) + 'W' + '\n')
-
 
 	file_precise.close()
