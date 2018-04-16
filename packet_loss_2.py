@@ -249,9 +249,12 @@ def polling_init(ONU, packet, stamp, absolute_clock):
 	for i in range(ONU_NUM):
 		grant_determine(ONU[i], packet[i], stamp[i], absolute_clock)
 
+
+# Attention: before you use this function, make sure that the transmission time is calculated in error.
+# transmission time should times 1e6, the unit is μs
 # packet transmission
 def packet_transmission(ONU_object, absolute_clock):
-	transmission_time = math.ceil(float(ONU_object.grant) / float(UPSTREAM_RATE))   # bit
+	transmission_time = math.ceil(float(ONU_object.grant) / float(UPSTREAM_RATE))   #* 1e6 ！！！
 	return int(transmission_time)
 
 # packet delay: from packet arrive to transmission starts
@@ -284,7 +287,7 @@ def polling(ONU, user_status_test, user_status_predict):
 		user_status_one_period_real = [user_status_test[i][hour_index] for i in range(ONU_NUM)]
 		user_status_one_period_predict = [user_status_predict[i][hour_index] for i in range(ONU_NUM)]
 		packet, stamp = packet_generation_one_period(user_status_one_period_real)
-		sleep_time_change(ONU, user_status_one_period_predict)
+		sleep_time_change(ONU, user_status_one_period_real)
 
 		absolute_clock = RTT        # before the first ONU sends data, the OLT needs to send a grant
 		detect_all_sleep = absolute_clock   # when all ONU sleep, absolute_clock will not continue
@@ -407,14 +410,14 @@ if __name__ == '__main__':
 	ONU_user = get_ONU_user()
 	user_status_predict, user_status_test = user_select(user_status_predict_all, user_status_test_all, ONU_user)
 
-	file_precise = open('./Lweek_256_3.txt', 'wb')
+	file_precise = open('./result/precise_256_2.txt', 'wb')
 	#s_long = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 15, 20, 30, 40, 50, 60, 70, 80, 90, 100, 20, 25, 30, 40, 50, 60, 70, 80, 90, 100]
-	#s_long = [25, 30, 35, 40, 50, 60, 70, 80, 90, 100, 45, 50, 55, 60, 65, 70, 75, 80, 90, 100, 65, 68, 70, 73, 75, 80, 85, 90, 95, 100]
-	s_long = [82, 84, 86, 88, 90, 92, 94, 96, 98, 100, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100]
-	for i in range(20):
+	s_long = [25, 30, 35, 40, 50, 60, 70, 80, 90, 100, 45, 50, 55, 60, 65, 70, 75, 80, 90, 100, 65, 68, 70, 73, 75, 80, 85, 90, 95, 100]
+	#s_long = [82, 84, 86, 88, 90, 92, 94, 96, 98, 100, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100]
+	for i in range(30):
 		T_SLEEP_LONG =  s_long[i] * 1000      #(i + 1) * 5 * 1000
-		#T_SLEEP_SHORT = (int(i / 10) + 1) * 20 * 1000
-		T_SLEEP_SHORT = (int(i / 10) + 1) * 10 * 1000 + 70 * 1000
+		T_SLEEP_SHORT = (int(i / 10) + 1) * 20 * 1000
+		#T_SLEEP_SHORT = (int(i / 10) + 1) * 10 * 1000 + 70 * 1000
 
 		start =time.clock()
 		print 'group:  ' + str(i)
@@ -434,3 +437,4 @@ if __name__ == '__main__':
 		file_precise.write(str(i) + '\t' + str(average_delay) + 'ms' + '\t' + str(average_energy) + 'W' + '\t' + str(loss_rate) + '\n')
 
 	file_precise.close()
+	

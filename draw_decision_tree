@@ -1,0 +1,16 @@
+#!usr/bin/env python
+#-*- coding:utf-8 -*-
+
+# this model is for drawing decision tree
+# objective: To draw decision tree
+# JialongLi 2017/07/11
+
+import re
+import os
+import sys
+import pickle
+import copy
+import random
+import pydotplus
+
+

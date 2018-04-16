@@ -248,7 +248,7 @@ def polling(ONU, user_status_test, user_status_predict):
 		user_status_one_period_real = [user_status_test[i][hour_index] for i in range(ONU_NUM)]
 		user_status_one_period_predict = [user_status_predict[i][hour_index] for i in range(ONU_NUM)]
 		packet, stamp = packet_generation_one_period(user_status_one_period_real)
-		sleep_time_change(ONU, user_status_one_period_predict)
+		sleep_time_change(ONU, user_status_one_period_real)
 
 		absolute_clock = RTT        # before the first ONU sends data, the OLT needs to send a grant
 		detect_all_sleep = absolute_clock   # when all ONU sleep, absolute_clock will not continue
@@ -369,7 +369,7 @@ if __name__ == '__main__':
 	user_id = get_user_id()
 	user_status_predict, user_status_test = user_select(user_status_predict_all, user_status_test_all, user_id)
 
-	file_precise = open('./Lweek_128_3.txt', 'wb')
+	file_precise = open('./result/precise_128_3.txt', 'wb')
 	#s_long = [25, 30, 35, 40, 50, 60, 70, 80, 90, 100, 45, 50, 55, 60, 65, 70, 75, 80, 90, 100, 65, 68, 70, 73, 75, 80, 85, 90, 95, 100]
 	s_long = [82, 84, 86, 88, 90, 92, 94, 96, 98, 100, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100]
 	#s_short = [20, 5, 5, 10, 20, 10, 50, 50, 30, 80, 90, 60, 5, 10, 20, 10, 80, 30, 70, 60]
