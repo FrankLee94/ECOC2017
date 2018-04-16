@@ -11,6 +11,8 @@ import sys
 import pickle
 import copy
 import random
+import pydotplus
+
 
 USER_NUM = 1000
 reload(sys)
@@ -364,12 +366,12 @@ if __name__ == '__main__':
 	#category_Lweek = conventional_method_Lweek(feature_train, feature_test, category_train)
 
 
-	cal_hit_rate(category_Dtree, category_test)
-	calculating_F_value(category_Dtree, category_test)
+	#cal_hit_rate(category_Dtree, category_test)
+	#calculating_F_value(category_Dtree, category_test)
 	
-	counting_accuate_rate(category_Dtree, category_test)
+	#counting_accuate_rate(category_Dtree, category_test)
 
-	save_file_for_sleep(category_Dtree, category_test)
+	#save_file_for_sleep(category_Dtree, category_test)
 
 	# this part is for migration.py
 	'''
